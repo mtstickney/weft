@@ -1,0 +1,119 @@
+* Weft, a simple server framework
+  Weft is a simple network server framework, which handles the details
+  of listening for connections and handing client connections off to
+  workers. Work management is done independently of the networking
+  stuff, and work managers can be created to use whatever strategy is
+  appropriate for a server.
+
+  Unlike [[http://www.thangorodrim.de/software/lisp-network-server/index.html][lisp-network-server]], Weft does not aim to be an
+  inetd-alike. This simplifies some of the code and allows services to
+  use different work management strategies. At the moment,
+  lisp-network-service's caveats about re-defining handlers still hold.
+
+* Class Server
+  The =server= class is the top-level object for the library, and
+  holds all the pieces necessary to run the server. When created, a
+  client must supply or set the =:address=, =:port=, and =:handler=
+  slots.
+
+  Optionally, clients may set the =:manager= slot, which is the task
+  manager for the server.
+** Accessors
+*** server-task-manager
+    Returns or sets the task manager for the server.
+
+*** server-socket
+    Returns or sets the =usocket:stream-server-usocket= the server is
+    listening on. This will be NIL if the server isn't currently
+    running, or an open socket if it's been started.
+
+*** server-address
+    Returns or sets the address the server will listen on (the server
+    must be restarted in order for any change to take affect). Can be
+    any value acceptable to =usocket:socket-listen=.
+
+*** server-port
+    Returns or sets the port the server will listen on (a restart is
+    required for changes to take effect). Can be any value acceptable
+    to =usocket:socket-listen=.
+
+*** server-connection-handler
+    Returns or sets the connection-handler function for the
+    server. This function will be called by a wrapper that ensures the
+    client socket is closed when the handler exits. The handler will
+    be called with a =usocket:stream-usocket= object and any =:args=
+    arguments set when the server object was created.
+
+** Operations
+*** run
+    The =run= function is used to start the server. =run='s exact
+    behavior will depend on the task manager used: with the default
+    threaded task manager, =run= returns immediately, but with a
+    single-threaded manager it would almost certainly block.
+
+*** stop
+    =stop= shuts the server down, including any open client
+    connections. With some task managers client connection shutdown may
+    be cooperative, so this function may be blocked for some
+    time. =stop= returns once the server has been completely shut down.
+
+*** stop-accepting
+    =stop-accepting= is like =stop=, but only shuts down the listening
+    socket. Client connections are allowed to continue until they are
+    closed by the clients. =stop-accepting= returns as soon as the
+    listening socket has been shut down.
+
+* Default Manager
+  Weft provides a thread-per-connection implementation of the task
+  manager (=threaded-task-manager=), which is used by default. Tasks
+  being run on this manager obey the following protocol:
+** *shutdown*
+   The special variable =*shutdown*= will be set to =t= when the
+   task should be shut down. The task must make it's own arrangements
+   to check =*shutdown*= periodically and shut down when
+   appropriate.
+
+** thread-shutdown
+   If a task wants to signal that it should be shut down, it may set
+   =*shutdown*= to =t= and let it's own handlers take care of it, or
+   signal a condition of type =thread-shutdown=. The condition avoids
+   any delay in checking =*shutdown*=, and will be handled by the task
+   manager immediately.
+
+* Task Manager Protocol
+  Weft can make use of any object that implements the task manager to
+  handle client connections. The task manager protocol consists of the
+  following functions:
+
+** add-task
+*** Syntax
+    : (add-task manager thunk)
+*** Description
+   =add-task= takes a thunk to be run as a task and adds it to the
+   given manager, returning a unique id for the task. =add-task= need
+   not start a task immediately, but it should at least be queued for
+   later execution.
+
+** remove-task
+*** Syntax
+    : (remove-task manager id)
+*** Description
+    =remove-task= takes a unique id as returned by =add-task=, and
+    removes the corresponding task from the manager, if
+    present. =remove-task= returns =t= if the task was found and
+    removed, =nil= otherwise.
+
+** stop-task
+*** Syntax
+    : (stop-task manager id)
+*** Description
+    =stop-task= takes a unique task id and shuts that task down, if
+    present. =stop-task= returns once the task has been stopped, which
+    may be some time later if task shutdown is cooperative.
+
+** all-tasks
+*** Syntax
+    : (all-tasks manager)
+*** Description
+    Returns a list of ids for all tasks currently managed by the
+    manager.
