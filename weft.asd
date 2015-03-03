@@ -2,9 +2,9 @@
 
 (asdf:defsystem #:weft
   :serial t
-  :description "Describe weft here"
-  :author "Your Name <your.name@example.com>"
-  :license "Specify license here"
+  :description "A TCP server framework, like Hunchentoot for TCP."
+  :author "Matthew Stickney <mtstickney@gmail.com>"
+  :license "MIT"
   :depends-on (#:usocket
                #:bordeaux-threads
                #:trivial-timeout)
