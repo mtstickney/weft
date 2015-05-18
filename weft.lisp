@@ -85,8 +85,7 @@
     (setf (ref-val (gethash (symbol-name task-id) (shutdown-vars manager)))
           new-val)))
 
-(defmethod add-task ((manager threaded-task-manager)
-                     (thunk function))
+(defmethod add-task ((manager threaded-task-manager) thunk)
   (let* ((id (gen-id))
          (stdout *standard-output*))
     ;; Create a shutdown slot for this thread
