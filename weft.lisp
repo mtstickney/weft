@@ -138,7 +138,7 @@
   "Return a wrapper func for HANDLER that will ensure SOCK is closed at exit."
   (check-type server server)
   (check-type sock usocket:stream-usocket)
-  (check-type handler function)
+  (check-type handler (or function symbol))
   (lambda ()
     (unwind-protect
          (apply handler (cons sock (server-handler-args server)))
