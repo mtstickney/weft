@@ -195,6 +195,7 @@
 (defmethod run ((server server) &key (backlog 5) (element-type 'character))
   (when (server-socket server)
     (usocket:socket-close (server-socket server)))
+  (log:info "Starting server" server)
   (setf (server-socket server)
         (prog1 (usocket:socket-listen (server-address server)
                                       (server-port server)
@@ -207,6 +208,7 @@
   (values))
 
 (defmethod stop ((server server))
+  (log:info "Stopping server" server)
   (let ((tasks (all-tasks (server-task-manager server))))
     (mapc #'(lambda (task)
               (stop-task (server-task-manager server)
@@ -215,6 +217,7 @@
     (values)))
 
 (defmethod stop-accepting ((server server))
+  (log:info "Refusing new connections to server" server)
   (let ((task (server-acceptor-task server)))
     (when task
       (stop-task (server-task-manager server)
