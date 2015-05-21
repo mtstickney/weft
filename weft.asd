@@ -7,7 +7,7 @@
   :license "MIT"
   :depends-on (#:usocket
                #:bordeaux-threads
+               #:log4cl
                #:trivial-timeout)
   :components ((:file "package")
                (:file "weft")))
-

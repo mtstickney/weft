@@ -91,7 +91,7 @@
     ;; Create a shutdown slot for this thread
     (setf (gethash (symbol-name id) (shutdown-vars manager))
           (make-ref :val nil))
-    (format t "Shutdown var is ~S~%" (gethash (symbol-name id) (shutdown-vars manager)))
+    (log:debug "Shutdown var is" (gethash (symbol-name id) (shutdown-vars manager)))
     (bordeaux-threads:with-lock-held ((task-lock manager))
       (setf (tasks manager)
             (acons id (bordeaux-threads:make-thread
@@ -105,7 +105,7 @@
                                 (handler-case (funcall thunk)
                                   (thread-shutdown (c)
                                     (declare (ignore c))))
-                             (format *standard-output* "Thread in cleanup~%")
+                             (log:debug "Thread in cleanup")
                              (remove-task manager *task-id*)))))
                    (tasks manager))))
     id))
@@ -150,14 +150,14 @@
   (check-type server server)
   (lambda ()
     (declare (special *shutdown-slot*))
-    (format *debug-io* "On acceptor start, *SHUTDOWN* is ~A~%" *shutdown*)
+    (log:debug "Acceptor starting." *shutdown*)
     (unwind-protect
          (loop while (not *shutdown*)
             with socket = (server-socket server)
             do (progn
-                 (format *debug-io* "Doing accept loop~%")
-                 (format *debug-io* "*SHUTDOWN* is ~A~%" *shutdown*)
-                 (format *debug-io* "*SHUTDOWN-SLOT* is ~A~%" *shutdown-slot*)
+                 (log:debug "Doing accept loop")
+                 (log:debug *shutdown*)
+                 (log:debug *shutdown-slot*)
                  (usocket:wait-for-input socket :timeout 2)
                  (when (eq (usocket::state socket) :read)
                    (let ((sock (usocket:socket-accept
@@ -167,7 +167,7 @@
                                 server
                                 sock
                                 (server-connection-handler server)))))))
-      (format *debug-io* "In acceptor cleanup~%")
+      (log:debug "In acceptor cleanup")
       (usocket:socket-close (server-socket server))
       (setf (server-socket server) nil)
       (values))))
@@ -200,7 +200,7 @@
                                       (server-port server)
                                       :backlog backlog
                                       :element-type element-type)
-          (format *debug-io* "Server socket created~%"))
+          (log:debug "Server socket created"))
         (server-acceptor-task server)
         (add-task (server-task-manager server)
                   (acceptor-func server)))
