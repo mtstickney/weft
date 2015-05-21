@@ -39,7 +39,7 @@
   (:documentation "Class implementing a thread-per-connection task manager."))
 
 (define-condition task-exists-error ()
-  ((id))
+  ((id :initarg :id :accessor task-id))
   (:documentation "Error thrown when a task with a particular ID already exists."))
 
 (defmethod find-task ((manager threaded-task-manager) (task symbol))
