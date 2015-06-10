@@ -172,7 +172,7 @@
       (values))))
 
 (defclass server ()
-  ((task-manager :initarg :manager  :accessor server-task-manager)
+  ((task-manager :initarg :manager :accessor server-task-manager)
    (socket :initform nil :accessor server-socket)
    (address :initarg :address :accessor server-address)
    (port :initarg :port :accessor server-port)
