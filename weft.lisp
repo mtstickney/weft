@@ -117,8 +117,7 @@
             (not (bordeaux-threads:thread-alive-p (cdr entry))))
         nil
         (progn
-          (setf (task-shutdown-p manager task) t)
-          (bordeaux-threads::join-thread (cdr entry))))))
+          (setf (task-shutdown-p manager task) t)))))
 
 (defmethod remove-task ((manager threaded-task-manager) (task symbol))
   (let ((entry (find-task manager task)))
