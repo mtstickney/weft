@@ -34,7 +34,7 @@
 
 (defclass threaded-task-manager (task-manager)
   ((tasks :initform '() :accessor tasks)
-   (task-lock :initform (bordeaux-threads:make-lock) :reader task-lock)
+   (task-lock :initform (bordeaux-threads:make-recursive-lock) :reader task-lock)
    (shutdown-vars :initform (make-hash-table :test #'equal) :accessor shutdown-vars))
   (:documentation "Class implementing a thread-per-connection task manager."))
 
@@ -92,7 +92,7 @@
     (setf (gethash (symbol-name id) (shutdown-vars manager))
           (make-ref :val nil))
     (log:debug "Shutdown var is" (gethash (symbol-name id) (shutdown-vars manager)))
-    (bordeaux-threads:with-lock-held ((task-lock manager))
+    (bordeaux-threads:with-recursive-lock-held ((task-lock manager))
       (setf (tasks manager)
             (acons id (bordeaux-threads:make-thread
                        (lambda ()
@@ -123,7 +123,7 @@
   (let ((entry (find-task manager task)))
     (if entry
         (progn
-          (bordeaux-threads:with-lock-held ((task-lock manager))
+          (bordeaux-threads:with-recursive-lock-held ((task-lock manager))
             (setf (tasks manager) (remove entry (tasks manager)))
             ;; Remove the shutdown slot for this thread
             (remhash (symbol-name task) (shutdown-vars manager)))
