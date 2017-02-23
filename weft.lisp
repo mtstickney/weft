@@ -45,7 +45,8 @@
 (defmethod find-task ((manager threaded-task-manager) (task symbol))
   ;; string= is used to compare uninterned symbols by name (symbols
   ;; are coerced to strings). Why aren't we just using strings, then?
-  (assoc task (tasks manager) :test #'string=))
+  (bt:with-recursive-lock-held ((task-lock manager))
+    (assoc task (tasks manager) :test #'string=)))
 
 (defun prompt-for (type format-string &rest format-args)
   "Prompt for a value of type TYPE, using FORMAT-STRING and FORMAT-ARGS to produce the prompt. Signals an error if the value read is not of type TYPE."
@@ -76,29 +77,32 @@
 (defgeneric task-shutdown-p (manager task-id)
   (:documentation "Return a boolean indicating whether the task identified by TASK-ID in MANAGER should shut down.")
   (:method ((manager threaded-task-manager) (task-id symbol))
-    (ref-val (gethash (symbol-name task-id) (shutdown-vars manager)))))
+    (bt:with-recursive-lock-held ((task-lock manager))
+      (ref-val (gethash (symbol-name task-id) (shutdown-vars manager))))))
 
 (defgeneric (setf task-shutdown-p) (new-val manager task-id)
   (:documentation "Set the shutdown variable for the task identified by TASK-ID in MANAGER to NEW-VAL.")
   (:method (new-val (manager threaded-task-manager) (task-id symbol))
     (check-type new-val boolean)
-    (setf (ref-val (gethash (symbol-name task-id) (shutdown-vars manager)))
-          new-val)))
+    (bt:with-recursive-lock-held ((task-lock manager))
+      (setf (ref-val (gethash (symbol-name task-id) (shutdown-vars manager)))
+            new-val))))
 
 (defmethod add-task ((manager threaded-task-manager) thunk)
   (let* ((id (gen-id))
          (stdout *standard-output*))
-    ;; Create a shutdown slot for this thread
-    (setf (gethash (symbol-name id) (shutdown-vars manager))
-          (make-ref :val nil))
-    (log:debug "Shutdown var is" (gethash (symbol-name id) (shutdown-vars manager)))
     (bordeaux-threads:with-recursive-lock-held ((task-lock manager))
+      ;; Create a shutdown slot for this thread
+      (setf (gethash (symbol-name id) (shutdown-vars manager))
+            (make-ref :val nil))
+      (log:debug "Shutdown var is" (gethash (symbol-name id) (shutdown-vars manager)))
       (setf (tasks manager)
             (acons id (bordeaux-threads:make-thread
                        (lambda ()
                          (let* ((*task-id* id)
-                                (*shutdown-slot* (gethash (symbol-name *task-id*)
-                                                          (shutdown-vars manager)))
+                                (*shutdown-slot* (bt:with-recursive-lock-held ((task-lock manager))
+                                                   (gethash (symbol-name *task-id*)
+                                                            (shutdown-vars manager))))
                                 (*standard-output* stdout))
                            (declare (special *task-id* *shutdown-slot*))
                            (unwind-protect
@@ -111,7 +115,8 @@
     id))
 
 (defmethod stop-task ((manager threaded-task-manager) (task symbol))
-  (let ((entry (find-task manager task)))
+  (let ((entry (bt:with-recursive-lock-held ((task-lock manager))
+                 (find-task manager task))))
     (if (or (null entry)
             (null (cdr entry))
             (not (bordeaux-threads:thread-alive-p (cdr entry))))
@@ -120,18 +125,19 @@
           (setf (task-shutdown-p manager task) t)))))
 
 (defmethod remove-task ((manager threaded-task-manager) (task symbol))
-  (let ((entry (find-task manager task)))
-    (if entry
-        (progn
-          (bordeaux-threads:with-recursive-lock-held ((task-lock manager))
+  (bt:with-recursive-lock-held ((task-lock manager))
+    (let ((entry (find-task manager task)))
+      (if entry
+          (progn
             (setf (tasks manager) (remove entry (tasks manager)))
             ;; Remove the shutdown slot for this thread
-            (remhash (symbol-name task) (shutdown-vars manager)))
-          t)
-        nil)))
+            (remhash (symbol-name task) (shutdown-vars manager))
+            t)
+          nil))))
 
 (defmethod all-tasks ((manager threaded-task-manager))
-  (mapcar #'car (tasks manager)))
+  (bt:with-recursive-lock-held ((task-lock manager))
+    (mapcar #'car (tasks manager))))
 
 (defun connection-handler-func (server sock handler)
   "Return a wrapper func for HANDLER that will ensure SOCK is closed at exit."
