@@ -69,8 +69,19 @@
       (cons
        (* 2 sb-vm:n-word-bytes)))))
 
-(defstruct ref
-  (val))
+(defstruct (ref (:conc-name #:%ref-))
+  (val)
+  (lock (bt:make-lock)))
+
+(defun ref-val (ref)
+  (check-type ref ref)
+  (bt:with-lock-held ((%ref-lock ref))
+    (%ref-val ref)))
+
+(defun (setf ref-val) (val ref)
+  (check-type ref ref)
+  (bt:with-lock-held ((%ref-lock ref))
+    (setf (%ref-val ref) val)))
 
 (define-symbol-macro *shutdown* (ref-val *shutdown-slot*))
 
