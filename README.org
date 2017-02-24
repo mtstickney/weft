@@ -17,7 +17,10 @@
   slots.
 
   Optionally, clients may set the =:manager= slot, which is the task
-  manager for the server.
+  manager for the server. Clients may also set the =:max-connections=
+  slot, which will cause the server to refuse new connections when
+  that many concurrent connections are open. The same limit can be
+  applied to the threaded task manager with the =:limit= option.
 ** Accessors
 *** server-task-manager
     Returns or sets the task manager for the server.
