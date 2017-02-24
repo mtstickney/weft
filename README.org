@@ -99,6 +99,10 @@
    not start a task immediately, but it should at least be queued for
    later execution.
 
+   If a manager has a limit on the maximum number of concurrent tasks
+   that can be running, =add-task= should signal an error of type
+   =manager-full-error=.
+
 ** remove-task
 *** Syntax
     : (remove-task manager id)
