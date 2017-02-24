@@ -15,10 +15,19 @@
         (incf *id-counter*)))))
 
 (defclass task-manager ()
-  ())
+  ((limit :initarg :limit :accessor task-limit)
+   (count :initform 0 :accessor task-count))
+  (:default-initargs :limit nil))
+
+(define-condition manager-full-error (error)
+  ((manager :initarg :manager :accessor manager))
+  (:report (lambda (c s)
+             (format s "Manager ~S has no more task slots available." (manager c)))))
 
 (defgeneric add-task (manager thunk)
-  (:documentation "Add a task to execute THUNK to MANAGER. Returns a unique ID for the task."))
+  (:documentation "Add a task to execute THUNK to MANAGER. Returns a
+  unique ID for the task. If the manager cannot accept a new task,
+  signals an error of type MANAGER-FULL-ERROR."))
 
 (defgeneric remove-task (manager task)
   (:documentation "Remove TASK from the task-manager MANAGER."))
@@ -31,6 +40,9 @@
 
 (defgeneric all-tasks (manager)
   (:documentation "Return a list of the ids of all tasks in MANAGER."))
+
+(defgeneric slots-available-p (manager)
+  (:documentation "Return T if there is capacity to add a new task to MANAGER, NIL otherwise."))
 
 (defclass threaded-task-manager (task-manager)
   ((tasks :initform '() :accessor tasks)
@@ -103,10 +115,13 @@
   (let* ((id (gen-id))
          (stdout *standard-output*))
     (bordeaux-threads:with-recursive-lock-held ((task-lock manager))
+      (unless (slots-available-p manager)
+        (error 'manager-full-error :manager manager))
       ;; Create a shutdown slot for this thread
       (setf (gethash (symbol-name id) (shutdown-vars manager))
             (make-ref :val nil))
       (log:debug "Shutdown var is" (gethash (symbol-name id) (shutdown-vars manager)))
+      (incf (task-count manager))
       (setf (tasks manager)
             (acons id (bordeaux-threads:make-thread
                        (lambda ()
@@ -140,6 +155,10 @@
     (let ((entry (find-task manager task)))
       (if entry
           (progn
+            (assert (plusp (task-count manager)) ()
+                    "Active task count was 0 when removing task from manager ~S."
+                    manager)
+            (decf (task-count manager))
             (setf (tasks manager) (remove entry (tasks manager)))
             ;; Remove the shutdown slot for this thread
             (remhash (symbol-name task) (shutdown-vars manager))
@@ -149,6 +168,11 @@
 (defmethod all-tasks ((manager threaded-task-manager))
   (bt:with-recursive-lock-held ((task-lock manager))
     (mapcar #'car (tasks manager))))
+
+(defmethod slots-available-p ((manager threaded-task-manager))
+  (bt:with-recursive-lock-held ((task-lock manager))
+    (or (not (task-limit manager))
+        (< (task-count manager) (task-limit manager)))))
 
 (defun connection-handler-func (server sock handler)
   "Return a wrapper func for HANDLER that will ensure SOCK is closed at exit."
@@ -178,11 +202,16 @@
                  (when (eq (usocket::state socket) :read)
                    (let ((sock (usocket:socket-accept
                                 (server-socket server))))
-                     (add-task (server-task-manager server)
-                               (connection-handler-func
-                                server
-                                sock
-                                (server-connection-handler server)))))))
+                     (handler-case
+                         (add-task (server-task-manager server)
+                                   (connection-handler-func
+                                    server
+                                    sock
+                                    (server-connection-handler server)))
+                       (manager-full-error ()
+                         (log:info "No more task slots, refusing connection from peer ~A."
+                                   (usocket:get-peer-address sock))
+                         (usocket:socket-close sock)))))))
       (log:debug "In acceptor cleanup")
       (usocket:socket-close (server-socket server))
       (setf (server-socket server) nil)
@@ -193,13 +222,19 @@
    (socket :initform nil :accessor server-socket)
    (address :initarg :address :accessor server-address)
    (port :initarg :port :accessor server-port)
+   (max-connections :initarg :max-connections :reader max-connections)
    (acceptor-task :initform nil :accessor server-acceptor-task)
    (connection-handler :initarg :handler
                        :accessor server-connection-handler)
    (handler-args :initarg :args :accessor server-handler-args))
   (:default-initargs
-   :manager (make-instance 'threaded-task-manager)
     :args '()))
+
+(defmethod initialize-instance :after ((instance server) &key max-connections (manager nil managerp) &allow-other-keys)
+  (declare (ignore manager))
+  (unless managerp
+    (setf (server-task-manager instance)
+          (make-instance 'threaded-task-manager :limit max-connections))))
 
 (define-condition thread-shutdown () ())
 

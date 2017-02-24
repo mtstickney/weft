@@ -3,11 +3,13 @@
 (defpackage #:weft
   (:use #:cl)
   (:export #:task-manager
+           #:manager-full-error
            #:add-task
            #:remove-task
            #:find-task
            #:stop-task
            #:all-tasks
+           #:slots-available-p
            #:threaded-task-manager)
   (:export #:*shutdown*)
   (:export #:server
